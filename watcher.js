@@ -13,7 +13,7 @@ const rssParser = new Parser({
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8315625996:AAHzoSzUBgyzU7OWOnUZWySo9DtFrTaqD2I";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6392300598";
 
-const SUBREDDITS = ["freelanceprogramming", "forhire", "slavelabour", "webdev", "smallbusiness", "entrepreneur"];
+const SUBREDDITS = ["FreelanceProgramming", "forhire", "freelance", "webdev", "smallbusiness"];
 
 const KEYWORDS = [
   "besoin d'un site", "besoin de site", "cherche développeur",
@@ -151,6 +151,17 @@ async function runCheck(seen) {
   saveSeen(seen);
 }
 
+async function selfPing() {
+  const url = process.env.RENDER_URL || process.env.RENDER_EXTERNAL_URL;
+  if (!url) return;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    console.log(`   Self-ping → ${res.status} (anti-sleep)`);
+  } catch (e) {
+    console.log(`   Self-ping échoué: ${e.message}`);
+  }
+}
+
 async function main() {
   if (TELEGRAM_BOT_TOKEN === "COLLE_TON_TOKEN_ICI") {
     console.error("⚠️  Configure TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID");
@@ -168,6 +179,13 @@ async function main() {
   const seen = loadSeen();
   console.log(`🚀 Lead Watcher démarré. Surveillance de: ${SUBREDDITS.join(", ")}`);
   console.log(`   Vérification toutes les ${POLL_INTERVAL_MS / 60000} minutes.`);
+
+  if (process.env.RENDER_URL || process.env.RENDER_EXTERNAL_URL) {
+    setInterval(selfPing, 10 * 60 * 1000);
+    console.log(`   Anti-sleep actif : ping toutes les 10 min`);
+  } else {
+    console.log(`   Anti-sleep désactivé. Définis RENDER_URL ou utilise cron-job.org`);
+  }
 
   await sendTelegramMessage("🚀 Lead Watcher démarré, surveillance active.");
   await runCheck(seen);

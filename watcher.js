@@ -25,8 +25,8 @@ const KEYWORDS = [
   "need a web dev", "website redesign",
 ];
 
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
-const DELAY_BETWEEN_SUBS_MS = 65000;
+const POLL_INTERVAL_MS = 12 * 60 * 1000;
+const DELAY_BETWEEN_SUBS_MS = 120 * 1000;
 const SEEN_FILE = path.join(__dirname, "seen.json");
 
 function loadSeen() {
@@ -72,7 +72,7 @@ async function parseFeedWithRetry(url, retries = 3) {
       return await rssParser.parseURL(url);
     } catch (e) {
       if (e.message.includes("429") && attempt < retries) {
-        const wait = attempt * 20000;
+        const wait = attempt * 30000;
         console.log(`   Rate-limit, attente ${wait / 1000}s... (tentative ${attempt}/${retries})`);
         await new Promise((r) => setTimeout(r, wait));
         continue;
@@ -156,9 +156,13 @@ async function selfPing() {
   if (!url) return;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    console.log(`   Self-ping → ${res.status} (anti-sleep)`);
+    const msg = `✅ Anti-sleep — ping OK (${res.status})`;
+    console.log(`   ${msg}`);
+    await sendTelegramMessage(msg);
   } catch (e) {
-    console.log(`   Self-ping échoué: ${e.message}`);
+    const msg = `❌ Anti-sleep — ping échoué: ${e.message}`;
+    console.log(`   ${msg}`);
+    await sendTelegramMessage(msg);
   }
 }
 

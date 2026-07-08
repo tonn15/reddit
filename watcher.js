@@ -151,18 +151,23 @@ async function runCheck(seen) {
   saveSeen(seen);
 }
 
+let selfPingFailCount = 0;
+
 async function selfPing() {
   const url = process.env.RENDER_URL || process.env.RENDER_EXTERNAL_URL;
   if (!url) return;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    const msg = `✅ Anti-sleep — ping OK (${res.status})`;
-    console.log(`   ${msg}`);
-    await sendTelegramMessage(msg);
+    console.log(`   Anti-sleep — ping OK (${res.status})`);
+    selfPingFailCount = 0; // reset, tout va bien
   } catch (e) {
-    const msg = `❌ Anti-sleep — ping échoué: ${e.message}`;
-    console.log(`   ${msg}`);
-    await sendTelegramMessage(msg);
+    selfPingFailCount++;
+    console.log(`   ❌ Anti-sleep — ping échoué: ${e.message}`);
+    // Ne notifie sur Telegram qu'après 2 échecs consécutifs, pour éviter
+    // les fausses alertes sur un simple ralentissement réseau ponctuel.
+    if (selfPingFailCount >= 2) {
+      await sendTelegramMessage(`⚠️ Anti-sleep — ${selfPingFailCount} échecs consécutifs. Vérifie le service Render.`);
+    }
   }
 }
 
@@ -186,7 +191,7 @@ async function main() {
 
   if (process.env.RENDER_URL || process.env.RENDER_EXTERNAL_URL) {
     setInterval(selfPing, 10 * 60 * 1000);
-    console.log(`   Anti-sleep actif : ping toutes les 10 min`);
+    console.log(`   Anti-sleep actif : ping toutes les 10 min (notif Telegram seulement si échec répété)`);
   } else {
     console.log(`   Anti-sleep désactivé. Définis RENDER_URL ou utilise cron-job.org`);
   }

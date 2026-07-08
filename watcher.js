@@ -1,3 +1,4 @@
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const Parser = require("rss-parser");
@@ -155,6 +156,14 @@ async function main() {
     console.error("⚠️  Configure TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID");
     process.exit(1);
   }
+
+  const PORT = process.env.PORT || 3000;
+  http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("Lead Watcher actif ✅");
+  }).listen(PORT, () => {
+    console.log(`   Serveur HTTP factice à l'écoute sur le port ${PORT} (pour Render)`);
+  });
 
   const seen = loadSeen();
   console.log(`🚀 Lead Watcher démarré. Surveillance de: ${SUBREDDITS.join(", ")}`);

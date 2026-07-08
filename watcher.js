@@ -26,7 +26,7 @@ const KEYWORDS = [
 ];
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
-const DELAY_BETWEEN_SUBS_MS = 45000;
+const DELAY_BETWEEN_SUBS_MS = 65000;
 const SEEN_FILE = path.join(__dirname, "seen.json");
 
 function loadSeen() {

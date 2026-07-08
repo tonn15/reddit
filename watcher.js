@@ -94,15 +94,17 @@ async function checkSubreddit(sub, seen) {
       if (!id || seen.has(id)) continue;
 
       const title = item.title || "";
-      const contentSnippet = (item.contentSnippet || item.content || "").slice(0, 500);
-      const fullText = `${title} ${contentSnippet}`;
+      const bodyHtml = item.content || "";
+      const bodyText = stripHtml(bodyHtml) || item.contentSnippet || "";
+      const fullText = `${title} ${bodyText}`;
 
       if (matchesKeywords(fullText)) {
+        const snippet = (bodyText || title).slice(0, 400);
         const message =
           `🔔 <b>Nouveau lead détecté</b>\n\n` +
           `📍 r/${sub}\n` +
           `📝 <b>${escapeHtml(title)}</b>\n\n` +
-          `${escapeHtml(contentSnippet.slice(0, 300))}${contentSnippet.length > 300 ? "..." : ""}\n\n` +
+          `${escapeHtml(snippet.slice(0, 300))}${snippet.length > 300 ? "..." : ""}\n\n` +
           `🔗 ${item.link}`;
 
         console.log(`\n✅ [r/${sub}] ${title}`);
@@ -123,6 +125,20 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function stripHtml(html) {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, "/")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function runCheck(seen) {

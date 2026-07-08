@@ -13,7 +13,7 @@ const rssParser = new Parser({
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8315625996:AAHzoSzUBgyzU7OWOnUZWySo9DtFrTaqD2I";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6392300598";
 
-const SUBREDDITS = ["freelanceprograming", "forhire", "slavelabour", "webdev", "smallbusiness", "entrepreneur"];
+const SUBREDDITS = ["freelanceprogramming", "forhire", "slavelabour", "webdev", "smallbusiness", "entrepreneur"];
 
 const KEYWORDS = [
   "besoin d'un site", "besoin de site", "cherche développeur",

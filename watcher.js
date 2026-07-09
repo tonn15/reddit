@@ -43,8 +43,8 @@ const KEYWORDS = [
   "need a web dev", "website redesign",
 ];
 
-const POLL_INTERVAL_MS = 12 * 60 * 1000;
-const DELAY_BETWEEN_SUBS_MS = 120 * 1000;
+const POLL_INTERVAL_MS = 5 * 60 * 1000;
+const DELAY_BETWEEN_SUBS_MS = 30 * 1000;
 
 const SEEN_FILE = path.join(__dirname, "seen.json");
 const STATE_FILE = path.join(__dirname, "state.json");

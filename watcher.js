@@ -16,31 +16,63 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6392300598";
 // ==================== SOURCES ====================
 
 const SUBREDDITS = [
-  "FreelanceProgramming", "forhire", "freelance", "webdev", "smallbusiness",
-  "webdevjobs", "DesignJobs", "frontend", "web_design", "Wordpress",
-  "shopify", "reactjs", "nextjs", "webflow", "squarespace",
+  // Freelance / dev direct
+  "FreelanceProgramming", "forhire", "freelance", "webdev", "webdevjobs",
+  "DesignJobs", "frontend", "web_design", "Wordpress", "shopify",
+  "reactjs", "nextjs", "webflow", "squarespace",
+  // Business / entrepreneurs qui ont souvent besoin d'un site
+  "smallbusiness", "Entrepreneur", "startups", "SaaS", "indiehackers",
+  "ecommerce", "digitalnomad", "sidehustle", "SmallYoutubers",
+  // Local / francophone
+  "france", "quebec", "montreal", "entrepreneur_francophone",
 ];
 
-// Colle ici tes URLs de flux RSS Google Alerts (voir README pour les générer).
-// Exemple: "https://www.google.com/alerts/feeds/XXXXXXXXXXXXX/XXXXXXXXXXXXX"
+// Flux RSS Google Alerts. Génère une alerte sur google.com/alerts pour chaque
+// requête utile, puis colle ici l'URL RSS fournie (choisir "Flux RSS" comme
+// mode de diffusion, pas "Email"). Exemples de requêtes à créer là-bas :
+//   "cherche développeur site web"
+//   "besoin d'un site internet" -reddit.com
+//   site:twitter.com "need a website"
+//   site:x.com "cherche développeur"
 const GOOGLE_ALERTS_FEEDS = [
   // "https://www.google.com/alerts/feeds/TON_ID/TON_AUTRE_ID",
 ];
 
-const HN_ENABLED = true; // Hacker New — API publique, pas de clé nécessaire
+// Flux RSS Upwork (officiel, pas de scraping) : va sur upwork.com, fais une
+// recherche de jobs avec tes filtres (ex: "website" + "web development"),
+// puis clique sur l'icône RSS en bas de la page de résultats pour récupérer
+// l'URL du flux propre à cette recherche.
+const UPWORK_RSS_FEEDS = [
+  // "https://www.upwork.com/ab/feed/jobs/rss?q=website%20development&sort=recency",
+];
+
+const HN_ENABLED = true; // Hacker News — API publique, pas de clé nécessaire
 
 // ===================================================
 
 const KEYWORDS = [
-  // Français
-  "besoin d'un site", "besoin de site", "cherche développeur",
-  "cherche un développeur", "cherche freelance", "recherche développeur",
-  "créer mon site", "création de site", "refaire mon site",
-  "besoin d'une landing page",
-  // Anglais
-  "need a website", "need website", "looking for a developer",
-  "looking for web developer", "hire a developer", "need a landing page",
-  "need a web dev", "website redesign",
+  // Français — besoin direct
+  "besoin d'un site", "besoin de site", "besoin d'un site web",
+  "besoin d'une landing page", "besoin d'une application web",
+  "cherche développeur", "cherche un développeur", "cherche développeuse",
+  "cherche freelance", "recherche développeur", "recherche freelance",
+  "recherche un développeur", "recherche une agence web",
+  // Français — création / refonte
+  "créer mon site", "création de site", "création site internet",
+  "refaire mon site", "refonte de site", "refonte du site", "refonte web",
+  "site cassé", "mon site ne marche plus", "mon site est down",
+  "site internet à faire", "site vitrine", "site e-commerce à créer",
+  "développeur web freelance", "développeur wordpress",
+  // Anglais — besoin direct
+  "need a website", "need website", "need a web developer", "need a web dev",
+  "need a landing page", "need a webapp", "need an app built",
+  "looking for a developer", "looking for web developer",
+  "looking for a freelance developer", "hire a developer",
+  "hire a web developer", "hiring a developer",
+  // Anglais — création / refonte
+  "website redesign", "redesign my website", "rebuild my website",
+  "site is broken", "my website is down", "need a new website",
+  "wordpress developer needed", "shopify developer needed",
 ];
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -245,6 +277,39 @@ async function checkGoogleAlertFeed(feedUrl, seen) {
   }
 }
 
+// ==================== UPWORK (RSS officiel, pas de scraping) ====================
+
+async function checkUpworkFeed(feedUrl, seen) {
+  try {
+    const feed = await rssParser.parseURL(feedUrl);
+    const items = feed.items || [];
+
+    for (const item of items) {
+      const rawId = item.guid || item.link;
+      const id = `upwork_${rawId}`;
+      if (!rawId || seen.has(id)) continue;
+
+      const title = stripHtml(item.title || "");
+      const bodyText = stripHtml(item.contentSnippet || item.content || "");
+
+      // Upwork RSS est déjà filtré par ta recherche sauvegardée, donc pas de
+      // re-filtrage KEYWORDS ici non plus.
+      await notifyLead({
+        source: "💼 Upwork",
+        title,
+        snippet: bodyText,
+        link: item.link,
+      });
+
+      seen.add(id);
+    }
+
+    console.log(`  [Upwork] ${items.length} jobs vérifiés`);
+  } catch (e) {
+    console.error(`  [Upwork ${feedUrl}] ${e.message}`);
+  }
+}
+
 // ==================== HACKER NEWS ====================
 // API Algolia publique, pas de clé, rate-limit très permissif (pas Reddit-like)
 
@@ -306,6 +371,10 @@ async function runCheck(seen, state) {
     await checkGoogleAlertFeed(feedUrl, seen);
   }
 
+  for (const feedUrl of UPWORK_RSS_FEEDS) {
+    await checkUpworkFeed(feedUrl, seen);
+  }
+
   saveSeen(seen);
   saveState(state);
 }
@@ -353,6 +422,7 @@ async function main() {
     `Reddit (${SUBREDDITS.length} subs)`,
     HN_ENABLED ? "Hacker News" : null,
     GOOGLE_ALERTS_FEEDS.length ? `Google Alerts (${GOOGLE_ALERTS_FEEDS.length} flux)` : null,
+    UPWORK_RSS_FEEDS.length ? `Upwork (${UPWORK_RSS_FEEDS.length} flux)` : null,
   ].filter(Boolean).join(", ");
 
   console.log(`🚀 Lead Watcher démarré. Sources: ${sourcesActives}`);

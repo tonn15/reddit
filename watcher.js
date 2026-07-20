@@ -47,6 +47,20 @@ const UPWORK_RSS_FEEDS = [
 ];
 
 const HN_ENABLED = true; // Hacker News — API publique, pas de clé nécessaire
+const REDDIT_SEARCH_ENABLED = true; // Recherche Reddit sur TOUT Reddit
+
+const SEARCH_QUERIES = [
+  // Français — besoin direct
+  `("besoin d'un site" OR "besoin de site" OR "besoin d'un site web" OR "besoin d'un site internet")`,
+  // Français — cherche développeur
+  `("cherche développeur" OR "cherche un développeur" OR "cherche freelance" OR "recherche développeur" OR "recherche un développeur")`,
+  // Français — création / refonte
+  `("créer mon site" OR "création de site" OR "création site internet" OR "refaire mon site" OR "refonte de site" OR "site internet à faire")`,
+  // Anglais — besoin direct
+  `("need a website" OR "need website" OR "need a web developer" OR "need a landing page" OR "need a new website")`,
+  // Anglais — cherche développeur
+  `("looking for a developer" OR "hire a developer" OR "looking for web developer" OR "hiring a web developer" OR "wordpress developer needed")`,
+];
 
 // ===================================================
 
@@ -73,6 +87,16 @@ const KEYWORDS = [
   "website redesign", "redesign my website", "rebuild my website",
   "site is broken", "my website is down", "need a new website",
   "wordpress developer needed", "shopify developer needed",
+  // Commentaires — recherches dans les fils de discussion
+  "je cherche un développeur", "je cherche un dev", "tu connais un développeur",
+  "tu connais un dev", "quelqu'un connaît un développeur", "connaissez-vous un développeur",
+  "besoin d'aide pour mon site", "besoin d'un dev", "cherche un bon développeur",
+  "recommandez un développeur", "recommandez un freelance", "agence web recommandée",
+  "you know a developer", "know any developer", "know any good developer",
+  "recommend a developer", "anyone know a developer", "anyone know a web developer",
+  "looking for recommendations", "need a recommendation for a developer",
+  "can someone help me build", "can anyone help me with my website",
+  "does anyone know a good", "who can build me a",
 ];
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -229,6 +253,9 @@ async function checkSubreddit(sub, seen, state) {
         });
       }
 
+      await checkPostComments(sub, rawId, title, seen);
+      await new Promise((r) => setTimeout(r, 2000));
+
       seen.add(id);
     }
 
@@ -239,6 +266,121 @@ async function checkSubreddit(sub, seen, state) {
     console.log(`  [r/${sub}] ${checked} nouveau${checked > 1 ? "x" : ""} post${checked > 1 ? "s" : ""} vérifié${checked > 1 ? "s" : ""}`);
   } catch (e) {
     console.error(`  [r/${sub}] ${e.message}`);
+  }
+}
+
+async function checkPostComments(sub, postId, postTitle, seen) {
+  const url = `https://www.reddit.com/r/${sub}/comments/${postId}.json`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const commentsData = data[1]?.data?.children || [];
+
+    for (const child of commentsData) {
+      if (child.kind === "t1") {
+        await checkCommentRecursive(child.data, sub, postTitle, postId, seen);
+      }
+    }
+  } catch (e) {
+    if (!e.message.includes("429")) {
+      console.error(`  [r/${sub}/comments/${postId}] ${e.message}`);
+    }
+  }
+}
+
+function extractComments(commentData) {
+  const replies = [];
+  if (typeof commentData === "string") {
+    try { return JSON.parse(commentData); } catch { return null; }
+  }
+  return commentData;
+}
+
+async function checkCommentRecursive(comment, sub, postTitle, postId, seen) {
+  const commentId = `comment_${comment.id}`;
+  if (seen.has(commentId)) return;
+
+  const bodyText = stripHtml(comment.body_html || comment.body || "");
+  if (bodyText && matchesKeywords(bodyText)) {
+    await notifyLead({
+      source: `r/${sub} (commentaire)`,
+      title: `Commentaire sur: ${postTitle}`,
+      snippet: bodyText.slice(0, 300),
+      link: `https://www.reddit.com/r/${sub}/comments/${postId}/_/${comment.id}/`,
+    });
+  }
+
+  seen.add(commentId);
+
+  if (comment.replies) {
+    const repliesData = extractComments(comment.replies);
+    const children = repliesData?.data?.children || [];
+    for (const child of children) {
+      if (child.kind === "t1") {
+        await checkCommentRecursive(child.data, sub, postTitle, postId, seen);
+      }
+    }
+  }
+}
+
+// ==================== REDDIT SEARCH (tout Reddit) ====================
+
+async function runRedditSearch(seen) {
+  for (const query of SEARCH_QUERIES) {
+    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&t=day&limit=50`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        console.error(`  [Search] HTTP ${res.status} pour: ${query.slice(0, 60)}...`);
+        continue;
+      }
+
+      const data = await res.json();
+      const children = data?.data?.children || [];
+
+      for (const child of children) {
+        if (child.kind !== "t3") continue;
+        const post = child.data;
+        const postId = `reddit_${post.id}`;
+        if (seen.has(postId)) continue;
+
+        const title = post.title || "";
+        const bodyText = stripHtml(post.selftext_html || post.selftext || "");
+        const fullText = `${title} ${bodyText}`;
+
+        if (matchesKeywords(fullText)) {
+          await notifyLead({
+            source: `r/${post.subreddit} (search)`,
+            title,
+            snippet: bodyText || title,
+            link: `https://www.reddit.com${post.permalink}`,
+          });
+        }
+
+        await checkPostComments(post.subreddit, post.id, title, seen);
+        await new Promise((r) => setTimeout(r, 1500));
+
+        seen.add(postId);
+      }
+
+      console.log(`  [Search] ${children.length} résultats analysés`);
+    } catch (e) {
+      console.error(`  [Search] ${e.message}`);
+    }
+
+    await new Promise((r) => setTimeout(r, 3000));
   }
 }
 
@@ -363,6 +505,10 @@ async function runCheck(seen, state) {
     await new Promise((r) => setTimeout(r, DELAY_BETWEEN_SUBS_MS));
   }
 
+  if (REDDIT_SEARCH_ENABLED) {
+    await runRedditSearch(seen);
+  }
+
   if (HN_ENABLED) {
     await checkHackerNews(seen);
   }
@@ -420,6 +566,7 @@ async function main() {
 
   const sourcesActives = [
     `Reddit (${SUBREDDITS.length} subs)`,
+    REDDIT_SEARCH_ENABLED ? `Reddit Search (${SEARCH_QUERIES.length} requêtes)` : null,
     HN_ENABLED ? "Hacker News" : null,
     GOOGLE_ALERTS_FEEDS.length ? `Google Alerts (${GOOGLE_ALERTS_FEEDS.length} flux)` : null,
     UPWORK_RSS_FEEDS.length ? `Upwork (${UPWORK_RSS_FEEDS.length} flux)` : null,
